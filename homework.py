@@ -48,12 +48,14 @@ logger.addHandler(handler)
 
 
 def send_message(bot, message):
+    """Функция отправки сообщения ботом"""
     if message != 'Статус не изменился':
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.info('Сообщение отправлено')
 
 
 def get_api_answer(current_timestamp):
+    """Функция получения ответа от API"""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
     homework_statuses = requests.get(ENDPOINT, headers=HEADERS, params=params)
@@ -64,6 +66,7 @@ def get_api_answer(current_timestamp):
 
 
 def check_response(response):
+    """Функция проверки ответа от API"""
     if not isinstance(response, dict):
         logger.error('Ответ от API не соответсвует нужному типу')
         raise TypeError(ERRORS['TypeError'])
@@ -71,12 +74,13 @@ def check_response(response):
         logger.error('Ответ от API не содержит ожиджаемого ключа')
         raise KeyError(ERRORS['KeyError'])
     if not isinstance(response['homeworks'], list):
-        logger.error('Ответ от API под ключом homeworks пришел не ввиде списка')
+        logger.error('Ответ от API пришел не ввиде списка')
         raise KeyError(ERRORS['KeyError'])
     return response['homeworks']
 
 
 def parse_status(homework):
+    """Функция получения статуса домашней работы"""
     global Old_Status
     homework_name = homework['homework_name']
     homework_status = homework['status']
@@ -93,6 +97,7 @@ def parse_status(homework):
 
 
 def check_tokens():
+    """Проверка переменых окружения"""
     if not all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID],):
         logger.critical('ОТСУТСТВУЮТ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ')
         return False
