@@ -1,11 +1,11 @@
 import logging
 import os
+import sys
 import time
 from http import HTTPStatus
 
 import requests
 import telegram
-import telegram.ext
 from dotenv import load_dotenv
 from exceptions import ResponseStatusError
 
@@ -28,18 +28,16 @@ HOMEWORK_STATUSES = {
 
 ERRORS = {
     'KeyError': 'Данного ключа не существует',
-    'ResponseStatusError': 'Отсуттсвует подключенеи к API',
+    'ResponseStatusError': 'Отсутсвует подключенеи к API',
     'TypeError': 'Ответ не приведен к нужному Python типу',
 
 }
-
-Old_Status = ''
 
 
 logging.basicConfig(
     level=logging.INFO,
     filename='main.log',
-    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s'
+    format='%(asctime)s, %(levelname)s, %(message)s, %(name)s, %(lineno)s'
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -49,66 +47,71 @@ logger.addHandler(handler)
 
 def send_message(bot, message):
     """Функция отправки сообщения ботом."""
-    if message != 'Статус не изменился':
+    try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logger.info('Сообщение отправлено')
+    except Exception:
+        raise
 
 
 def get_api_answer(current_timestamp):
     """Функция получения ответа от API."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
-    homework_statuses = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    if homework_statuses.status_code != HTTPStatus.OK:
-        logger.error('Осутствует подключение к API')
-        raise ResponseStatusError(ERRORS['ResponseStatusError'])
-    return homework_statuses.json()
+    try:
+        homework_statuses = requests.get(
+            ENDPOINT, headers=HEADERS, params=params
+        )
+    except Exception:
+        raise
+    else:
+        if homework_statuses.status_code != HTTPStatus.OK:
+            raise ResponseStatusError(ERRORS['ResponseStatusError'])
+        return homework_statuses.json()
 
 
 def check_response(response):
     """Функция проверки ответа от API."""
     if not isinstance(response, dict):
-        logger.error('Ответ от API не соответсвует нужному типу')
         raise TypeError(ERRORS['TypeError'])
     if response['homeworks'] is None:
-        logger.error('Ответ от API не содержит ожиджаемого ключа')
         raise KeyError(ERRORS['KeyError'])
     if not isinstance(response['homeworks'], list):
-        logger.error('Ответ от API пришел не ввиде списка')
         raise KeyError(ERRORS['KeyError'])
     return response['homeworks']
 
 
 def parse_status(homework):
     """Функция получения статуса домашней работы."""
-    global Old_Status
+    if not isinstance(homework, dict):
+        raise TypeError(ERRORS['TypeError'])
+    if homework['homework_name'] is None:
+        raise KeyError(ERRORS['KeyError'])
     homework_name = homework['homework_name']
+    if homework['status'] is None:
+        raise KeyError(ERRORS['KeyError'])
     homework_status = homework['status']
     verdict = HOMEWORK_STATUSES[homework_status]
     if verdict is None:
-        logger.error('такого статуча не существует')
         raise KeyError(ERRORS['KeyError'])
-    if verdict == Old_Status:
-        logger.debug('Статус не изменился')
-        return 'Статус не изменился'
-    else:
-        Old_Status = verdict
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
     """Проверка переменых окружения."""
     if not all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID],):
-        logger.critical('ОТСУТСТВУЮТ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ')
         return False
     return True
 
 
 def main():
     """Основная логика работы бота."""
+    if not check_tokens():
+        logger.critical('ОТСУТСТВУЮТ ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ')
+        sys.exit()
+    hw_statuses = {}
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
-    while check_tokens():
+    while True:
         try:
             response = get_api_answer(current_timestamp)
             checked_response = check_response(response)
@@ -117,10 +120,25 @@ def main():
             time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            send_message(bot, message)
-            time.sleep(RETRY_TIME)
+            logger.error(f'Сбой в работе программы: {error}')
+            try:
+                send_message(bot, message)
+                logger.info('Сообщение отправлено')
+            except Exception as b_err:
+                logger.error(f'Сбой при отправке сообщений: {b_err}')
+            finally:
+                time.sleep(RETRY_TIME)
         else:
-            send_message(bot, mes)
+            status = checked_response[0]['status']
+            hw_name = checked_response[0]['homework_name']
+            if hw_name not in hw_statuses.keys():
+                hw_statuses[hw_name] = ''
+            if hw_statuses[hw_name] != status:
+                hw_statuses[hw_name] = status
+                send_message(bot, mes)
+                logger.info('Сообщение отправлено')
+            else:
+                logger.debug('Статус не изменился')
 
 
 if __name__ == '__main__':
