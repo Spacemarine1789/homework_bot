@@ -55,7 +55,7 @@ def get_api_answer(current_timestamp):
             ENDPOINT, headers=HEADERS, params=params
         )
         if homework_statuses.status_code != HTTPStatus.OK:
-            raise ResponseStatusError
+            raise ResponseStatusError('Ошибка ответа от API')
         return homework_statuses.json()
     except requests.exceptions.RequestException as err:
         raise err
@@ -64,32 +64,26 @@ def get_api_answer(current_timestamp):
 def check_response(response):
     """Функция проверки ответа от API."""
     if not isinstance(response, dict):
-        raise TypeError
-    if 'homeworks' not in response.keys():
-        raise KeyError
-    if response['homeworks'] is None:
-        raise ValueError
+        raise TypeError('Ответ от API должен быть словарем')
+    if response.get('homeworks') is None:
+        raise KeyError('В словаре ответа от API нет такого ключа')
     if not isinstance(response['homeworks'], list):
-        raise TypeError
+        raise TypeError('Домашние работы должны быть списком')
     return response['homeworks']
 
 
 def parse_status(homework):
     """Функция получения статуса домашней работы."""
     if not isinstance(homework, dict):
-        raise TypeError
-    if 'homework_name' not in homework.keys():
-        raise KeyError
-    if homework['homework_name'] is None:
-        raise ValueError
+        raise TypeError('Словарь домашней работы обладает не верным типом')
+    if homework.get('homework_name') is None:
+        raise KeyError('Нет такого ключа в словаре доамешней работы')
     homework_name = homework['homework_name']
-    if 'status' not in homework.keys():
-        raise KeyError
-    if homework['status'] is None:
-        raise ValueError
+    if homework.get('status') is None:
+        raise KeyError('Нет такого ключа в словаре доамешней работы')
     homework_status = homework['status']
     if homework_status not in HOMEWORK_STATUSES.keys():
-        raise KeyError
+        raise KeyError('Такого статуса не существует')
     verdict = HOMEWORK_STATUSES[homework_status]
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
@@ -120,7 +114,7 @@ def main():
                 'status': checked_response[0]['status'],
             }
             if hw_now != hw_old:
-                hw_old = hw_old
+                hw_old = hw_now
                 send_message(bot, mes)
                 logger.info('Сообщение отправлено')
             else:
